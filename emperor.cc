@@ -1,7 +1,8 @@
 #include <iostream>
 #include <vector>
-#include <Windows.h>
+#include <algorithm>
 #include <stdint.h>
+#include <math.h>
 // #include <sys/resource.h>
 // #include <sys/time.h>
 
@@ -23,12 +24,37 @@ struct star {
 
 std::vector<star> stars;
 
+int distance(star & a, star & b)
+{
+	int dx = a.x - b.x;
+	int dy = a.y - b.y;
+
+	return floor(sqrt(dx * dx + dy * dy));
+}
 
 void fly_to(star & from, star & to, int ships)
 {
+	if (distance(from, to) > 60) {
+		return;
+	}
 	cout << "fly " << from.id << " " << to.id << " " << ships << endl;
 	from.flights_from++;
+	from.ships -= ships;
 	to.flights_to_friendly++;
+}
+
+bool has_link(const std::vector<std::pair<int,int>> & links, star & a, star & b)
+{
+	int aa = std::min(a.id, b.id);
+	int bb = std::max(a.id, b.id);
+	return std::find(links.begin(), links.end(), std::make_pair(aa,bb)) != links.end();
+}
+
+void add_link(std::vector<std::pair<int,int>> & links, int a, int b)
+{
+	int aa = std::min(a, b);
+	int bb = std::max(a, b);
+	links.push_back({aa,bb});
 }
 
 int main() {
@@ -37,8 +63,6 @@ int main() {
 	// own scanf without using cin/cout if you decide to.
 	// This is just an example.
 	std::ios::sync_with_stdio(false);
-
-	uint32_t pid = GetCurrentProcessId();
 
 	// Read initial galaxy configuration.
 	string dummy;
@@ -56,6 +80,7 @@ int main() {
 		std::vector<star *> my_stars;
 		std::vector<star *> our_stars;
 		std::vector<star *> enemy_stars;
+		std::vector<std::pair<int,int>> links;
 
 		for (auto & star : stars) {
 			star.flights_from = 0;
@@ -77,7 +102,7 @@ int main() {
 				intel.owner = owner;
 				intel.ships = shipcount;
 				intel.next_production = turns;
-				// cerr << "intel " << pid << " - " << intel.x << " " << intel.y << " " << intel.owner << " " << intel.ships << endl;
+				// cerr << "intel " <<  " - " << intel.x << " " << intel.y << " " << intel.owner << " " << intel.ships << endl;
 				switch (owner) {
 					case -1:
 						free_stars.push_back(&intel);
@@ -95,6 +120,7 @@ int main() {
 			} else if (cmd == "link") {
 				int from, to;
 				cin >> from >> to;
+				links.push_back({from,to});
 			} else if (cmd == "flight") {
 				int from, to, owner, shipcount, turns;
 				cin >> from >> to >> shipcount >> owner >> turns;
@@ -102,6 +128,7 @@ int main() {
 				if (owner == 2) {
 					stars[to].flights_to_enemy++;
 				} else {
+					add_link(links, from, to);
 					stars[to].flights_to_friendly++;
 				}
 			} else if (cmd == "done") {
@@ -120,9 +147,9 @@ int main() {
 		//                usage.ru_utime.tv_usec + usage.ru_stime.tv_usec);
 
 		for (auto & my : my_stars) {
-			// cerr << pid << " - "<< my->x << ", " << my->y << endl;
+			// cerr << " - "<< my->x << ", " << my->y << endl;
 			if (my->ships > 11 && my->flights_from < 2) {
-				// cerr << pid << " ships " << my->ships << " " << free_stars.empty() << endl;
+				// cerr << " ships " << my->ships << " " << free_stars.empty() << endl;
 				for (auto & f : free_stars) {
 					if (f->flights_to_friendly == 0 && f->flights_to_enemy == 0) {
 						fly_to(*my, *f, 6);
@@ -133,6 +160,14 @@ int main() {
 			if (my->ships > 30 && !enemy_stars.empty()) {
 				auto target = enemy_stars[my->ships % enemy_stars.size()];
 				fly_to(*my, *target, my->ships / 2);
+			}
+
+			if (my->ships > 20) {
+				for (auto & other : our_stars) {
+					if (!has_link(links, *my, *other) && my->ships >= other->ships) {
+						fly_to(*my, *other, 1);
+					}
+				}
 			}
 		}
 		cout << "done" << endl;
