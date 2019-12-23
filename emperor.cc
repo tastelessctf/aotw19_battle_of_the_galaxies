@@ -178,7 +178,7 @@ void attack(star & from, std::vector<star *> & enemies)
 
 	for (auto target: enemies) {
 		int strength = 10 + target->ships + target->richness + target->flights_to_enemy;
-		int to_send = from.ships - 10 - from.flights_to_enemy;
+		int to_send = from.ships - from.flights_to_enemy - 1;
 		if (to_send > strength) {
 			to_send = std::min(to_send, strength * 2);	// send max twice as many ships as needed
 			fly_to(from, *target, to_send);
@@ -204,12 +204,12 @@ bool safe_neighbourhood(star & source, int depth)
 
 void to_front_lines(star & from, std::vector<star *> & friendlies)
 {
-	if (from.score < 60) {
+	if (from.score < 40) {
 		// we are at front line
 		return;
 	}
 
-	int safe_ships = (60 - from.score) / 2;
+	int safe_ships = (120 - from.score) / 3;
 	if (safe_ships < 0) {
 		safe_ships = 0;
 	}
