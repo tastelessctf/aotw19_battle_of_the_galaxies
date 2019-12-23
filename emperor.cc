@@ -69,13 +69,6 @@ std::vector<star *> nearby_stars(star & from, std::vector<star> & stars)
 	return nearby;
 }
 
-int score_multiplier(star & s)
-{
-	if (s.owner == -1) return 0;
-	if (s.owner == 2) return -1;
-	return 1;
-}
-
 void update_scores(std::vector<star> & stars)
 {
 	std::vector<star*> to_score;
@@ -128,36 +121,51 @@ void link_with_others(const std::vector<std::pair<int, int>> & links, star & fro
 	}
 }
 
-void send_ships(star & from, std::vector<star> & stars)
+void attack(star & from, std::vector<star *> & enemies)
 {
+	std::sort(enemies.begin(), enemies.end(), [](star * a, star * b) {
+		if (a->richness == b->richness) {
+			return a->ships < b->ships;
+		} else {
+			return a->richness > b->richness;
+		}
+		});
+
+	for (auto target: enemies) {
+		int strength = 10 + target->ships + target->richness + target->flights_to_enemy;
+		int to_send = from.ships - 10;
+		if (to_send > strength) {
+			to_send = std::min(to_send, strength * 2);	// send max twice as many ships as needed
+			fly_to(from, *target, to_send);
+		}
+	}
+}
+
+void to_front_lines(star & from, std::vector<star *> & friendlies)
+{
+	if (from.score < 60) {
+		// we are at front line
+		return;
+	}
+
 	int safe_ships = (120 - from.score) / 3;
 	if (safe_ships < 0) {
 		safe_ships = 0;
 	}
 
-	std::vector<star *> nearby = nearby_stars(from, stars);
+	if (from.ships < safe_ships) {
+		// we don't have enough ships
+		return;
+	}
 
-	std::sort(nearby.begin(), nearby.end(), [](star * a, star * b) {
-        if (a->owner < 2 && b->owner < 2) {
-			return a->score < b->score;
-		} else if (a->owner == b->owner) {
-			return a->ships < b->ships;
-		} else {
-			return a->owner == 2;
-		}
+	std::sort(friendlies.begin(), friendlies.end(), [](star * a, star * b) {
+		return a->score < b->score;
 		});
 
-	for (auto target: nearby) {
-		if (target->owner == 2) {
-			if (from.ships - 20 > target->ships + target->richness + target->flights_to_enemy) {
-				fly_to(from, *target, from.ships - 10);
-			}
-		} else {
-			if ((target->owner == 0 || target->owner == 1) && from.score > 60) {
-				if (target->score < from.score && from.ships >= safe_ships) {
-					fly_to(from, *target, from.ships - safe_ships);
-				}
-			}
+	for (auto target: friendlies) {
+		if (target->score < from.score) {
+			fly_to(from, *target, from.ships - safe_ships);
+			break;
 		}
 	}
 }
@@ -247,9 +255,22 @@ int main() {
 		update_scores(stars);
 
 		for (auto & my : my_stars) {
+			auto nearby = nearby_stars(*my, stars);
+			std::vector<star *> nearby_enemies;
+			std::vector<star *> nearby_friends;
+
+			std::copy_if(nearby.begin(), nearby.end(), std::back_inserter(nearby_enemies), [](star * s) {
+				return s->owner == 2;
+				});
+
+			std::copy_if(nearby.begin(), nearby.end(), std::back_inserter(nearby_friends), [](star * s) {
+				return s->owner == 0 || s->owner == 1;
+				});
+
 			try_colonize(*my, free_stars);
 			link_with_others(links, *my, our_stars);
-			send_ships(*my, stars);
+			attack(*my, nearby_enemies);
+			to_front_lines(*my, nearby_friends);
 		}
 
 		cout << "done" << endl;
