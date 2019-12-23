@@ -18,17 +18,19 @@ struct star {
 	int flights_from;
 	int flights_to_friendly;
 	int flights_to_enemy;
+	int attack_in;
 	double score;
 };
 
 std::vector<star> stars;
+int turn;
 
 int distance(star & a, star & b)
 {
 	int dx = a.x - b.x;
 	int dy = a.y - b.y;
 
-	return floor(sqrt(dx * dx + dy * dy));
+	return ceil(sqrt(dx * dx + dy * dy));
 }
 
 void fly_to(star & from, star & to, int ships)
@@ -133,7 +135,7 @@ void attack(star & from, std::vector<star *> & enemies)
 
 	for (auto target: enemies) {
 		int strength = 10 + target->ships + target->richness + target->flights_to_enemy;
-		int to_send = from.ships - 10;
+		int to_send = from.ships - 10 - from.flights_to_enemy;
 		if (to_send > strength) {
 			to_send = std::min(to_send, strength * 2);	// send max twice as many ships as needed
 			fly_to(from, *target, to_send);
@@ -170,6 +172,29 @@ void to_front_lines(star & from, std::vector<star *> & friendlies)
 	}
 }
 
+void can_help(star & from, std::vector<star *> & friends)
+{
+	if (from.attack_in) {
+		// sorry, can't help as we are under attack too
+		return;
+	}
+	for (auto f : friends) {
+		if (f->attack_in) {
+			// under attack, can we help?
+			int dist = distance(from, *f);
+			int turns = dist / 10;
+			if (turns < f->attack_in) {
+				// we are in range
+				int reinforcements_needed = f->ships - (f->flights_to_enemy - 10) + 1;
+				if (reinforcements_needed > 0 && from.ships - reinforcements_needed > 10) {
+					// looks bearable, send help
+					fly_to(from, *f, reinforcements_needed);
+				}
+			}
+		}
+	}
+}
+
 int main() {
 	// Disable synchronization to make cin/cout much faster.
 	// Don't use scanf/printf then. Of course, you can do your
@@ -188,7 +213,6 @@ int main() {
 		stars.push_back(s);
 	}
 
-	int turn = 0;
 	while (true) {
 		std::vector<star *> free_stars;
 		std::vector<star *> my_stars;
@@ -202,6 +226,7 @@ int main() {
 			star.flights_from = 0;
 			star.flights_to_friendly = 0;
 			star.flights_to_enemy = 0;
+			star.attack_in = 0;
 		}
 
 		while (true) {
@@ -240,9 +265,13 @@ int main() {
 			} else if (cmd == "flight") {
 				int from, to, owner, shipcount, turns;
 				cin >> from >> to >> shipcount >> owner >> turns;
+
 				stars[from].flights_from++;
 				if (owner == 2) {
 					stars[to].flights_to_enemy += shipcount;
+					if (stars[to].attack_in == 0 || turns < stars[to].attack_in) {
+						stars[to].attack_in = turns;
+					}
 				} else {
 					add_link(links, from, to);
 					stars[to].flights_to_friendly++;
@@ -268,6 +297,7 @@ int main() {
 				});
 
 			try_colonize(*my, free_stars);
+			can_help(*my, nearby_friends);
 			link_with_others(links, *my, our_stars);
 			attack(*my, nearby_enemies);
 			to_front_lines(*my, nearby_friends);
