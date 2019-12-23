@@ -20,6 +20,7 @@ struct star {
 	int flights_from;
 	int flights_to_friendly;
 	int flights_to_enemy;
+	double score;
 };
 
 std::vector<star> stars;
@@ -55,6 +56,78 @@ void add_link(std::vector<std::pair<int,int>> & links, int a, int b)
 	int aa = std::min(a, b);
 	int bb = std::max(a, b);
 	links.push_back({aa,bb});
+}
+
+std::vector<star *> nearby_stars(star & from, std::vector<star> & stars)
+{
+	std::vector<star *> nearby;
+	for (auto & other : stars) {
+		if (from.id != other.id) {
+			if (distance(from, other) < 60) {
+				nearby.push_back(&other);
+			}
+		}
+	}
+	return nearby;
+}
+
+void update_scores(std::vector<star> & stars)
+{
+	for (auto & star : stars) {
+		star.score = 0;
+		if (star.owner >= 0) {
+			auto nearby = nearby_stars(star, stars);
+			for (auto near : nearby) {
+				int mult = near->owner == 2 ? -1 : 1;
+				star.score += (1.0 / distance(star, *near)) * mult * (near->ships + near->richness);
+			}
+			int mult = star.owner == 2 ? -1 : 1;
+			star.score += mult * (star.ships + star.richness);
+		}
+	}
+}
+
+void try_colonize(star & from, std::vector<star *> & candidates)
+{
+	std::sort(candidates.begin(), candidates.end(), [](star * a, star * b) {return a->richness > b->richness;});
+
+	for (auto c : candidates) {
+		if (from.ships > 5 &&
+			c->flights_to_friendly == 0 && c->flights_to_enemy == 0)
+		{
+			fly_to(from, *c, 6);
+		}
+	}
+}
+
+void link_with_others(const std::vector<std::pair<int, int>> & links, star & from, std::vector<star *> & candidates)
+{
+	if (from.ships > 20) {
+		for (auto & other : candidates) {
+			if (!has_link(links, from, *other) && from.ships >= other->ships) {
+				fly_to(from, *other, 1);
+			}
+		}
+	}
+}
+
+void send_ships(star & from, std::vector<star> & stars)
+{
+	std::vector<star *> nearby = nearby_stars(from, stars);
+
+	std::sort(nearby.begin(), nearby.end(), [](star * a, star * b) {return a->score < b->score;});
+
+	for (auto target: nearby) {
+		if (target->owner == 2) {
+			if (from.ships - 20 > target->ships) {
+				fly_to(from, *target, from.ships - 10);
+			}
+		} else {
+			if (target->score < from.score && from.ships > 30) {
+				fly_to(from, *target, from.score - target->score);
+			}
+		}
+	}
 }
 
 int main() {
@@ -136,40 +209,14 @@ int main() {
 			}
 		}
 
-		// Call getrusage to query how much CPU time you have left.
-		// Be a bit on the conservative side, since the moment the process exceeds
-		// this limit, it is killed and your AI does nothing for the rest of the
-		// match.
-		// struct rusage usage;
-		// getrusage(RUSAGE_SELF, &usage);
-		// int usec_remaining =
-		//     2000000 - ((usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) * 1000000 +
-		//                usage.ru_utime.tv_usec + usage.ru_stime.tv_usec);
+		update_scores(stars);
 
 		for (auto & my : my_stars) {
-			// cerr << " - "<< my->x << ", " << my->y << endl;
-			if (my->ships > 11 && my->flights_from < 2) {
-				// cerr << " ships " << my->ships << " " << free_stars.empty() << endl;
-				for (auto & f : free_stars) {
-					if (f->flights_to_friendly == 0 && f->flights_to_enemy == 0) {
-						fly_to(*my, *f, 6);
-					}
-				}
-			}
-
-			if (my->ships > 30 && !enemy_stars.empty()) {
-				auto target = enemy_stars[my->ships % enemy_stars.size()];
-				fly_to(*my, *target, my->ships / 2);
-			}
-
-			if (my->ships > 20) {
-				for (auto & other : our_stars) {
-					if (!has_link(links, *my, *other) && my->ships >= other->ships) {
-						fly_to(*my, *other, 1);
-					}
-				}
-			}
+			try_colonize(*my, free_stars);
+			link_with_others(links, *my, our_stars);
+			send_ships(*my, stars);
 		}
+
 		cout << "done" << endl;
 	}
 }
