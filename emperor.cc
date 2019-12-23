@@ -82,41 +82,31 @@ void update_scores(std::vector<star> & stars)
 
 	for (auto & star : stars) {
 		if (star.owner < 0 || star.owner > 1) continue;
-		star.score = 1000;
-		auto nearby = nearby_stars(star, stars);
-		for (auto near : nearby) {
-			if (near->owner == 2) {
-				int dist = distance(star, *near);
+		star.score = 999;
+		for (auto & enemy : stars) {
+			if (enemy.owner == 2) {
+				int dist = distance(star, enemy);
 				if (dist < star.score) {
 					star.score = dist;
 				}
 			}
 		}
-		if (star.score > 999) {
-			// no enemy in vicinity, need further computation
-			to_score.push_back(&star);
-		}
-	}
-	int rounds = 0;
-	while (!to_score.empty() || rounds++ > 7) {
-		for (auto s : to_score) {
-			auto nearby = nearby_stars(*s, stars);
-			for (auto near : nearby) {
-				if (near->score < s->score) {
-					int dist = distance(*s, *near);
-					if (dist + near->score < s->score) {
-						s->score = dist + near->score;
-					}
-				}
-			}
-		}
-		to_score.erase(std::remove_if(to_score.begin(), to_score.end(), [](star * a){ return a->score < 1000;}), to_score.end());
 	}
 }
 
 void try_colonize(star & from, std::vector<star *> & candidates)
 {
-	std::sort(candidates.begin(), candidates.end(), [](star * a, star * b) {return a->richness > b->richness;});
+	std::sort(candidates.begin(), candidates.end(), [&from](star * a, star * b) {
+		if (a->richness > b->richness) {
+			return true;
+		} else if (a->richness == b->richness) {
+			int dist_a = distance(from, *a);
+			int dist_b = distance(from, *b);
+			return dist_a < dist_b;
+		} else {
+			return false;
+		}
+		});
 
 	for (auto c : candidates) {
 		if (from.ships > 5 &&
@@ -129,7 +119,7 @@ void try_colonize(star & from, std::vector<star *> & candidates)
 
 void link_with_others(const std::vector<std::pair<int, int>> & links, star & from, std::vector<star *> & candidates)
 {
-	if (from.ships > 20) {
+	if (from.ships > 10) {
 		for (auto & other : candidates) {
 			if (!has_link(links, from, *other) && from.ships >= other->ships) {
 				fly_to(from, *other, 1);
@@ -140,13 +130,18 @@ void link_with_others(const std::vector<std::pair<int, int>> & links, star & fro
 
 void send_ships(star & from, std::vector<star> & stars)
 {
+	int safe_ships = (120 - from.score) / 3;
+	if (safe_ships < 0) {
+		safe_ships = 0;
+	}
+
 	std::vector<star *> nearby = nearby_stars(from, stars);
 
 	std::sort(nearby.begin(), nearby.end(), [](star * a, star * b) {
         if (a->owner < 2 && b->owner < 2) {
 			return a->score < b->score;
 		} else if (a->owner == b->owner) {
-			return a->ships > b->ships;
+			return a->ships < b->ships;
 		} else {
 			return a->owner == 2;
 		}
@@ -158,8 +153,10 @@ void send_ships(star & from, std::vector<star> & stars)
 				fly_to(from, *target, from.ships - 10);
 			}
 		} else {
-			if (target->score < from.score && from.ships > 30) {
-				fly_to(from, *target, from.ships - 20);
+			if ((target->owner == 0 || target->owner == 1) && from.score > 60) {
+				if (target->score < from.score && from.ships >= safe_ships) {
+					fly_to(from, *target, from.ships - safe_ships);
+				}
 			}
 		}
 	}
@@ -191,7 +188,7 @@ int main() {
 		std::vector<star *> enemy_stars;
 		std::vector<std::pair<int,int>> links;
 
-//		cerr << "================= TURN " << turn << endl;
+		// cerr << "================= TURN " << turn << endl;
 
 		for (auto & star : stars) {
 			star.flights_from = 0;
