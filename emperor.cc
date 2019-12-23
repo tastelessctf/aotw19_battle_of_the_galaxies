@@ -127,7 +127,7 @@ void try_colonize(star & from, std::vector<star *> & candidates)
 		if (from.ships > 5 &&
 			c->flights_to_friendly == 0 && c->flights_to_enemy == 0)
 		{
-			fly_to(from, *c, 6);
+            fly_to(from, *c, max(6, from.ships - (6 - from.richness)));
             continue;
 		}
         // let's see if we can team up with other planet
@@ -140,7 +140,7 @@ void try_colonize(star & from, std::vector<star *> & candidates)
             if ( travel_turns(*helper, *c) != travel_turns(from, *c)) continue; //we don't arrive at the same time
             int missing_ships = 6 - from.ships;
             fly_to(from, *c, from.ships);
-            fly_to(*helper, *c, missing_ships);
+            fly_to(*helper, *c, max(missing_ships, helper->ships - (6 - helper->richness)  ));
 
         }
 	}
@@ -183,8 +183,12 @@ void attack(star & from, std::vector<star *> & enemies, std::vector<star> & star
 	for (auto target: enemies) {
 		int strength = 10 + target->ships + target->richness + target->flights_to_enemy;
 		int to_send = from.ships - from.flights_to_enemy - 1;
+		if (target->flights_to_friendly >= strength * 2) {
+			// already taken care of
+			continue;
+		}
 		if (to_send > strength) {
-			to_send = std::min(to_send, strength * 2);	// send max twice as many ships as needed
+			to_send = std::min(to_send, strength * 3 / 2);	// send max twice as many ships as needed
 			fly_to(from, *target, to_send);
 			continue;
 		} else {
@@ -252,7 +256,7 @@ void to_front_lines(star & from, std::vector<star *> & friendlies)
 		return;
 	}
 
-	int safe_ships = (120 - from.score) / 3;
+	int safe_ships = (60 - from.score) / 3;
 	if (safe_ships < 0) {
 		safe_ships = 0;
 	}
