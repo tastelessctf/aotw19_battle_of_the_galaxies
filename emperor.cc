@@ -233,22 +233,6 @@ void reinforce_attack(star & from, std::vector<star *> & enemies)
 	}
 }
 
-bool is_friendly(star & who) {
-    if (who.id == 1 || who.id == 0) return true;
-    return false;
-}
-
-bool safe_neighbourhood(star & source, int depth)
-{
-    if (depth == 0) return true;
-    auto nearby = nearby_stars(source, stars, 40); //only intel distance
-    for (auto neighbour : nearby) {
-		if (!is_friendly( *neighbour )) break;
-        return safe_neighbourhood(*neighbour, depth-1);
-    }
-    return false;
-}
-
 void to_front_lines(star & from, std::vector<star *> & friendlies)
 {
 	if (from.score < 40) {
@@ -414,22 +398,6 @@ int main() {
 			to_front_lines(*my, nearby_friends);
 		}
 
-        /* nsr: move all leftover troops based on adj matrix by simple heuristic:
-         * a) check if all neighbour nodes are friendly
-         * b) move troops to neighbour node with most edges
-        for (auto & my : my_stars) {
-            if (safe_neighbourhood(*my, 1)) {
-                auto nearby = nearby_stars(*my, stars, 60);
-
-                  std::sort(nearby.begin(), nearby.end(),
-                        [](star * a, star * b) {
-                    return a->score > b->score;
-                });
-
-                fly_to( *my, *nearby.front(), my->ships-10);
-            }
-        }
-         */
 
 
 		cout << "done" << endl;
