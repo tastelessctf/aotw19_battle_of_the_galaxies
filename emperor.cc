@@ -151,14 +151,17 @@ void try_colonize(star & from, std::vector<star *> & candidates)
 
 void link_with_others(const std::vector<std::pair<int, int>> & links, star & from, std::vector<star *> & candidates)
 {
+	if (from.attack_in && from.flights_to_enemy > 10) {
+		// don't try to link when under attack
+		return;
+	}
+	auto nearby = nearby_stars(from, stars, 60);
+	for (auto & c: candidates) {
+		if (c->owner == -1) return; // dont link
+	}
 
-        auto nearby = nearby_stars(from, stars, 60);
-		for (auto & c: candidates) {
-            if (c->owner == -1) return; // dont link
-        }
-
-		for (auto & other : candidates) {
-            if (from.ships > 0 && other->flights_to_friendly == 0 ) {
+	for (auto & other : candidates) {
+		if (from.ships > 0 && other->flights_to_friendly == 0 ) {
 			if (!has_link(links, from, *other) && from.ships >= other->ships) {
 				fly_to(from, *other, 1);
 			}
@@ -182,7 +185,9 @@ void attack(star & from, std::vector<star *> & enemies)
 		if (to_send > strength) {
 			to_send = std::min(to_send, strength * 2);	// send max twice as many ships as needed
 			fly_to(from, *target, to_send);
+			continue;
 		}
+		break;
 	}
 }
 
@@ -242,7 +247,7 @@ void can_help(star & from, std::vector<star *> & friends)
 			// under attack, can we help?
 			int dist = distance(from, *f);
 			int turns = dist / 10;
-			if (turns <= f->attack_in) {
+			if (turns < f->attack_in) {
 				// we are in range
 				int reinforcements_needed = (f->flights_to_enemy - 10) - f->ships;
 				if (reinforcements_needed > 0) {
