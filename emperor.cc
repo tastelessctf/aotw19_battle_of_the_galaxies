@@ -233,21 +233,21 @@ void to_front_lines(star & from, std::vector<star *> & friendlies)
 
 void can_help(star & from, std::vector<star *> & friends)
 {
-	if (from.attack_in) {
+	if (from.attack_in && from.flights_to_enemy > 10) {
 		// sorry, can't help as we are under attack too
 		return;
 	}
 	for (auto f : friends) {
-		if (f->attack_in) {
+		if (f->attack_in && f->flights_to_enemy > 10) {
 			// under attack, can we help?
 			int dist = distance(from, *f);
 			int turns = dist / 10;
-			if (turns < f->attack_in) {
+			if (turns <= f->attack_in) {
 				// we are in range
-				int reinforcements_needed = f->ships - (f->flights_to_enemy - 10) + 1;
-				if (reinforcements_needed > 0 && from.ships - reinforcements_needed > 10) {
+				int reinforcements_needed = (f->flights_to_enemy - 10) - f->ships;
+				if (reinforcements_needed > 0) {
 					// looks bearable, send help
-					fly_to(from, *f, reinforcements_needed);
+					fly_to(from, *f, std::min(from.ships, reinforcements_needed));
 				}
 			}
 		}
