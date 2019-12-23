@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <stdint.h>
 #include <math.h>
-// #include <sys/resource.h>
-// #include <sys/time.h>
 
 using namespace std;
 
@@ -71,19 +69,48 @@ std::vector<star *> nearby_stars(star & from, std::vector<star> & stars)
 	return nearby;
 }
 
+int score_multiplier(star & s)
+{
+	if (s.owner == -1) return 0;
+	if (s.owner == 2) return -1;
+	return 1;
+}
+
 void update_scores(std::vector<star> & stars)
 {
+	std::vector<star*> to_score;
+
 	for (auto & star : stars) {
-		star.score = 0;
-		if (star.owner >= 0) {
-			auto nearby = nearby_stars(star, stars);
-			for (auto near : nearby) {
-				int mult = near->owner == 2 ? -1 : 1;
-				star.score += (1.0 / distance(star, *near)) * mult * (near->ships + near->richness);
+		if (star.owner < 0 || star.owner > 1) continue;
+		star.score = 1000;
+		auto nearby = nearby_stars(star, stars);
+		for (auto near : nearby) {
+			if (near->owner == 2) {
+				int dist = distance(star, *near);
+				if (dist < star.score) {
+					star.score = dist;
+				}
 			}
-			int mult = star.owner == 2 ? -1 : 1;
-			star.score += mult * (star.ships + star.richness);
 		}
+		if (star.score > 999) {
+			// no enemy in vicinity, need further computation
+			to_score.push_back(&star);
+		}
+	}
+	int rounds = 0;
+	while (!to_score.empty() || rounds++ > 7) {
+		for (auto s : to_score) {
+			auto nearby = nearby_stars(*s, stars);
+			for (auto near : nearby) {
+				if (near->score < s->score) {
+					int dist = distance(*s, *near);
+					if (dist + near->score < s->score) {
+						s->score = dist + near->score;
+					}
+				}
+			}
+		}
+		to_score.erase(std::remove_if(to_score.begin(), to_score.end(), [](star * a){ return a->score < 1000;}), to_score.end());
 	}
 }
 
@@ -115,16 +142,24 @@ void send_ships(star & from, std::vector<star> & stars)
 {
 	std::vector<star *> nearby = nearby_stars(from, stars);
 
-	std::sort(nearby.begin(), nearby.end(), [](star * a, star * b) {return a->score < b->score;});
+	std::sort(nearby.begin(), nearby.end(), [](star * a, star * b) {
+        if (a->owner < 2 && b->owner < 2) {
+			return a->score < b->score;
+		} else if (a->owner == b->owner) {
+			return a->ships > b->ships;
+		} else {
+			return a->owner == 2;
+		}
+		});
 
 	for (auto target: nearby) {
 		if (target->owner == 2) {
-			if (from.ships - 20 > target->ships) {
+			if (from.ships - 20 > target->ships + target->richness + target->flights_to_enemy) {
 				fly_to(from, *target, from.ships - 10);
 			}
 		} else {
 			if (target->score < from.score && from.ships > 30) {
-				fly_to(from, *target, from.score - target->score);
+				fly_to(from, *target, from.ships - 20);
 			}
 		}
 	}
@@ -148,12 +183,15 @@ int main() {
 		stars.push_back(s);
 	}
 
+	int turn = 0;
 	while (true) {
 		std::vector<star *> free_stars;
 		std::vector<star *> my_stars;
 		std::vector<star *> our_stars;
 		std::vector<star *> enemy_stars;
 		std::vector<std::pair<int,int>> links;
+
+//		cerr << "================= TURN " << turn << endl;
 
 		for (auto & star : stars) {
 			star.flights_from = 0;
@@ -199,7 +237,7 @@ int main() {
 				cin >> from >> to >> shipcount >> owner >> turns;
 				stars[from].flights_from++;
 				if (owner == 2) {
-					stars[to].flights_to_enemy++;
+					stars[to].flights_to_enemy += shipcount;
 				} else {
 					add_link(links, from, to);
 					stars[to].flights_to_friendly++;
@@ -218,5 +256,6 @@ int main() {
 		}
 
 		cout << "done" << endl;
+		turn++;
 	}
 }
