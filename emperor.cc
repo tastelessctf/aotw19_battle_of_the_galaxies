@@ -33,6 +33,28 @@ int distance(star & a, star & b)
 	return ceil(sqrt(dx * dx + dy * dy));
 }
 
+#define MAP_SIZE 300
+#define TRAVEL_SPEED 10
+
+int travel_turns(star & from, star & to) {
+    long squareDist = (long) (from.x - to.x) * (from.x - to.x) +
+        (long) (from.y - to.y) * (from.y - to.y);
+
+    int lb = 1;
+    int ub = MAP_SIZE * 2;
+    while (lb < ub) {
+        int mb = (lb + ub) / 2;
+        if (mb * mb >= squareDist) {
+            ub = mb;
+        } else {
+            lb = mb + 1;
+        }
+    }
+    return (lb + TRAVEL_SPEED - 1) / TRAVEL_SPEED;
+}
+
+
+
 void fly_to(star & from, star & to, int ships)
 {
 	if (distance(from, to) > 60) {
@@ -58,12 +80,12 @@ void add_link(std::vector<std::pair<int,int>> & links, int a, int b)
 	links.push_back({aa,bb});
 }
 
-std::vector<star *> nearby_stars(star & from, std::vector<star> & stars)
+std::vector<star *> nearby_stars(star & from, std::vector<star> & stars, int radius)
 {
 	std::vector<star *> nearby;
 	for (auto & other : stars) {
 		if (from.id != other.id) {
-			if (distance(from, other) < 60) {
+			if (distance(from, other) < radius) {
 				nearby.push_back(&other);
 			}
 		}
@@ -104,18 +126,39 @@ void try_colonize(star & from, std::vector<star *> & candidates)
 		});
 
 	for (auto c : candidates) {
+
 		if (from.ships > 5 &&
 			c->flights_to_friendly == 0 && c->flights_to_enemy == 0)
 		{
 			fly_to(from, *c, 6);
+            continue;
 		}
+        // let's see if we can team up with other planet
+	    auto candidate_neighbours = nearby_stars(*c, stars, 60);
+        for (auto helper : candidate_neighbours) {
+            if(c->flights_to_friendly != 0 || c->flights_to_enemy != 0) continue; //theres work in progress, let's not get involved
+            if (helper->id == from.id) continue; // we cant help ourselves
+            if (helper->owner != from.owner) continue; //this is not our star
+            if (helper->ships + from.ships < 6) continue; // are we strong enough
+            if ( travel_turns(*helper, *c) != travel_turns(from, *c)) continue; //we don't arrive at the same time
+            int missing_ships = 6 - from.ships;
+            fly_to(from, *c, from.ships);
+            fly_to(*helper, *c, missing_ships);
+
+        }
 	}
 }
 
 void link_with_others(const std::vector<std::pair<int, int>> & links, star & from, std::vector<star *> & candidates)
 {
-	if (from.ships > 10) {
+
+        auto nearby = nearby_stars(from, stars, 60);
+		for (auto & c: candidates) {
+            if (c->owner == -1) return; // dont link
+        }
+
 		for (auto & other : candidates) {
+            if (from.ships > 0 && other->flights_to_friendly == 0 ) {
 			if (!has_link(links, from, *other) && from.ships >= other->ships) {
 				fly_to(from, *other, 1);
 			}
@@ -143,6 +186,22 @@ void attack(star & from, std::vector<star *> & enemies)
 	}
 }
 
+bool is_friendly(star & who) {
+    if (who.id == 1 || who.id == 0) return true;
+    return false;
+}
+
+bool safe_neighbourhood(star & source, int depth)
+{
+    if (depth == 0) return true;
+    auto nearby = nearby_stars(source, stars, 40); //only intel distance
+    for (auto neighbour : nearby) {
+		if (!is_friendly( *neighbour )) break;
+        return safe_neighbourhood(*neighbour, depth-1);
+    }
+    return false;
+}
+
 void to_front_lines(star & from, std::vector<star *> & friendlies)
 {
 	if (from.score < 60) {
@@ -150,7 +209,7 @@ void to_front_lines(star & from, std::vector<star *> & friendlies)
 		return;
 	}
 
-	int safe_ships = (120 - from.score) / 3;
+	int safe_ships = (60 - from.score) / 2;
 	if (safe_ships < 0) {
 		safe_ships = 0;
 	}
@@ -194,6 +253,8 @@ void can_help(star & from, std::vector<star *> & friends)
 		}
 	}
 }
+
+
 
 int main() {
 	// Disable synchronization to make cin/cout much faster.
@@ -283,8 +344,9 @@ int main() {
 
 		update_scores(stars);
 
+
 		for (auto & my : my_stars) {
-			auto nearby = nearby_stars(*my, stars);
+			auto nearby = nearby_stars(*my, stars, 60);
 			std::vector<star *> nearby_enemies;
 			std::vector<star *> nearby_friends;
 
@@ -303,7 +365,25 @@ int main() {
 			to_front_lines(*my, nearby_friends);
 		}
 
+        /* nsr: move all leftover troops based on adj matrix by simple heuristic:
+         * a) check if all neighbour nodes are friendly
+         * b) move troops to neighbour node with most edges
+        for (auto & my : my_stars) {
+            if (safe_neighbourhood(*my, 1)) {
+                auto nearby = nearby_stars(*my, stars, 60);
+
+                  std::sort(nearby.begin(), nearby.end(),
+                        [](star * a, star * b) {
+                    return a->score > b->score;
+                });
+
+                fly_to( *my, *nearby.front(), my->ships-10);
+            }
+        }
+         */
+
+
 		cout << "done" << endl;
 		turn++;
 	}
-}
+} 
